@@ -9,5 +9,7 @@ print("ASC: ", c)
 print("ASS: ", audio_descriptors.audio_spectrum_spread(c))
 print("ASF: ", audio_descriptors.audio_spectrum_flatness())
 
+audio_descriptors.save_as_xml("wilhelm_mono.xml")
+
 audio_descriptors.plot_envelope(audio_envelope)
 audio_descriptors.plot_fourier()

@@ -133,4 +133,5 @@ dmypy.json
 docs - mpeg7
 .idea
 *.wav
+*.xml
 

@@ -4,6 +4,7 @@ from scipy.stats.mstats import gmean
 import matplotlib.pyplot as plt
 from math import log10
 import numpy as np
+import xml.etree.cElementTree as eT
 
 
 class Descriptors:
@@ -15,13 +16,18 @@ class Descriptors:
         normalize_v = np.vectorize(self.normalize)
         self.data = normalize_v(self.data)
         self.N = len(self.data)
-        # fft is symetrical - we only nead half of the data
+        # FFT is symetrical - we only nead half of the data
         self.fft = fft(self.data)[:self.N // 2]
         self.fft = np.abs(self.fft)
-        # fft is symetrical - we only nead half of the frequencies
+        # FFT is symetrical - we only nead half of the frequencies
         self.fftfreq = fftfreq(self.N, 1.0 / self.fs)[:self.N // 2]
         self.FRAME_SIZE = 1024
         self.HOP_LENGTH = 512
+        # Descriptors - stored for saving in xml
+        self.lat = 0
+        self.asc = 0
+        self.ass = 0
+        self.asf = 0
 
     def normalize(self, element: float) -> float:
         return element/(2 ** float(self.bits)*2)
@@ -35,9 +41,18 @@ class Descriptors:
         plt.grid()
         plt.show()
 
-    def save_as_xml(self):
-        # TODO
-        pass
+    def save_as_xml(self, file_name: str):
+        root = eT.Element("root")
+        doc = eT.SubElement(root, "descriptors")
+
+        eT.SubElement(doc, "audio_spectrum_centroid").text = str(self.asf)
+        eT.SubElement(doc, "audio_spectrum_spread").text = str(self.ass)
+        eT.SubElement(doc, "audio_spectrum_flatness").text = str(self.asf)
+        eT.SubElement(doc, "log_attack_time").text = str(self.lat)
+
+        tree = eT.ElementTree(root)
+        with open(file_name, 'w') as f:
+            tree.write(f, encoding='unicode')
 
     def log_attack_time(self, _envelope, thresh_min=0.2, thresh_max=0.9) -> float:
         '''
@@ -62,7 +77,8 @@ class Descriptors:
         lower_value_index = find_nearest_value_index(_envelope[:upper_value_index], lower_value)
         attack_time = (upper_value_index - lower_value_index)/self.fs
         lat = log10(attack_time)
-        return lat
+        self.lat = lat
+        return self.lat
 
     def audio_spectrum_centroid(self) -> float:
         '''
@@ -78,7 +94,8 @@ class Descriptors:
         '''
         nominator = np.sum(self.fftfreq * self.fft)
         denominator = np.sum(self.fft)
-        return nominator/denominator
+        self.asc = nominator/denominator
+        return self.asc
 
     def audio_spectrum_spread(self, c: float) -> float:
         '''
@@ -94,7 +111,8 @@ class Descriptors:
         '''
         nominator = np.sum((self.fftfreq-c)**2 * self.fft)
         denominator = np.sum(self.fft)
-        return np.sqrt(nominator/denominator)
+        self.ass = np.sqrt(nominator/denominator)
+        return self.ass
 
     def audio_spectrum_flatness(self) -> float:
         '''
@@ -111,7 +129,8 @@ class Descriptors:
         '''
         nominator = gmean(self.fft)
         denominator = np.mean(self.fft)
-        return nominator/denominator
+        self.asf = nominator/denominator
+        return self.asf
 
     def audio_spectrum_envelope(self) -> np.ndarray:
         # TODO more detailed version
