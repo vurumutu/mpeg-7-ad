@@ -11,14 +11,19 @@ class Descriptors:
         self.fs, self.data = wavfile.read(audio_file)
         # TODO handling of multiple channels
         self.bits = bits
+        # normalization of vector - according to PCM
         normalize_v = np.vectorize(self.normalize)
         self.data = normalize_v(self.data)
         self.N = len(self.data)
+        # fft is symetrical - we only nead half of the data
         self.fft = fft(self.data)[:self.N // 2]
         self.fft = np.abs(self.fft)
+        # fft is symetrical - we only nead half of the frequencies
         self.fftfreq = fftfreq(self.N, 1.0 / self.fs)[:self.N // 2]
+        self.FRAME_SIZE = 1024
+        self.HOP_LENGTH = 512
 
-    def normalize(self, element: float):
+    def normalize(self, element: float) -> float:
         return element/(2 ** float(self.bits)*2)
 
     def print_info(self):
@@ -34,7 +39,7 @@ class Descriptors:
         # TODO
         pass
 
-    def log_attack_time(self, _envelope, thresh_min=0.2, thresh_max=0.9):
+    def log_attack_time(self, _envelope, thresh_min=0.2, thresh_max=0.9) -> float:
         '''
         LAT is defined as log in base of 10 of time that passes between beginning of the sound to the maximum intensity.
         To avoid problems such as random noises, default threshold are different than 0 and 100%.
@@ -51,13 +56,15 @@ class Descriptors:
         maximum_intensity = np.amax(_envelope)
         lower_value = thresh_min*maximum_intensity
         upper_value = thresh_max*maximum_intensity
-        lower_value_index = find_nearest_value_index(_envelope, lower_value)
         upper_value_index = find_nearest_value_index(_envelope, upper_value)
+        # we are limiting our search to the values before the biggest value - we search for initial attack time
+        # amplitude at the end of recording may be the lowest which doesnt make sense for LAT
+        lower_value_index = find_nearest_value_index(_envelope[:upper_value_index], lower_value)
         attack_time = (upper_value_index - lower_value_index)/self.fs
         lat = log10(attack_time)
         return lat
 
-    def audio_spectrum_centroid(self):
+    def audio_spectrum_centroid(self) -> float:
         '''
             Audio spectrum centroid is defined as follows:
                         sum(k*F[k])
@@ -69,14 +76,11 @@ class Descriptors:
             https://www.sciencedirect.com/topics/engineering/spectral-centroid
         :return:
         '''
-        nominator = 0
-        for i in range(self.fftfreq.size):
-            nominator += self.fftfreq[i] * self.fft[i]
+        nominator = np.sum(self.fftfreq * self.fft)
         denominator = np.sum(self.fft)
-        c = nominator/denominator
-        return c
+        return nominator/denominator
 
-    def audio_spectrum_spread(self, c: float):
+    def audio_spectrum_spread(self, c: float) -> float:
         '''
             Audio spectrum spread is defined as follows:
                                 sum( (k-c_i)^2 *F[k])
@@ -88,14 +92,11 @@ class Descriptors:
             https://www.sciencedirect.com/topics/engineering/spectral-centroid
         :return:
         '''
-        nominator = 0
-        for i in range(self.fftfreq.size):
-            nominator += (self.fftfreq[i]-c)**2 * self.fft[i]
+        nominator = np.sum((self.fftfreq-c)**2 * self.fft)
         denominator = np.sum(self.fft)
-        s = np.sqrt(nominator/denominator)
-        return s
+        return np.sqrt(nominator/denominator)
 
-    def audio_spectrum_flatness(self):
+    def audio_spectrum_flatness(self) -> float:
         '''
         Ratio of geometric and arithmetic means:
                 (product(x(n)))^(1/N)
@@ -110,21 +111,22 @@ class Descriptors:
         '''
         nominator = gmean(self.fft)
         denominator = np.mean(self.fft)
+        return nominator/denominator
 
-        sf = nominator/denominator
-        return sf
-
-    def audio_spectrum_envelope(self):
+    def audio_spectrum_envelope(self) -> np.ndarray:
+        # TODO more detailed version
         '''
-        Computing envelope of a signal.
-        edge = 2^(rm)*x
-        r - resolution in octaves
-        m - real number
         :return:
         '''
+        return np.array([max(self.data[i:i+self.FRAME_SIZE]) for i in range(0, self.N, self.HOP_LENGTH)])
 
-        pass
+    def helper_frames_to_time(self, _envelope) -> np.ndarray:
+        frames_to_time = np.repeat(_envelope, self.HOP_LENGTH)
+        return frames_to_time
 
-
-if __name__ == "__main__":
-    pass
+    def plot_envelope(self, _envelope):
+        t = self.helper_frames_to_time(_envelope)
+        plt.plot(self.data, "b")
+        plt.plot(t, "r")
+        plt.grid()
+        plt.show()
